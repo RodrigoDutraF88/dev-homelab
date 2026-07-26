@@ -5,9 +5,11 @@ networks:
 
 services:
   traefik:
-    image: traefik:v3.1
+    image: traefik:v3.6
     container_name: traefik
     restart: unless-stopped
+    security_opt:
+      - label:disable
     command:
       - "--configFile=/etc/traefik/traefik.yml"
     ports:
@@ -15,8 +17,8 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ../infrastructure/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
-      - ../infrastructure/traefik/dynamic:/etc/traefik/dynamic:ro
+      - ../infrastructure/traefik/traefik.yml:/etc/traefik/traefik.yml:ro,Z
+      - ../infrastructure/traefik/dynamic:/etc/traefik/dynamic:ro,Z
     networks:
       - dev-homelab
     labels:
@@ -25,6 +27,5 @@ services:
       - "traefik.http.routers.traefik-dashboard.entrypoints=web"
       - "traefik.http.routers.traefik-dashboard.service=api@internal"
       - "traefik.http.routers.traefik-dashboard.middlewares=traefik-auth"
-
-
       - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_DASHBOARD_AUTH}"
+
