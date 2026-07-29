@@ -23,3 +23,8 @@ Dynamic configurations(Docker labels):defines what traffic goes where on a per-s
 Docker-compose: brings the container itself and uses docker labels to tell traefik which services to route. Services are added to it as the homelab grows(modular growth). Services is the main section where all containers are defined.command: passes a list of command-line flags directly to the Traefik binary on startup. Ports: maps networks ports from de host machine to the container, external acces to port 8080 is blocked, so it needs to go through traefik's reverse proxy router with authentication. Volumes: mounts files or directories from the host machine into the container. Networks: connects the container to specific Docker networks. dev-homelab: attaches the traefik container to the dev-homelab network created before. 
 
 Portainer: is a lightweight, open-source management tool that provides a graphical user interface (GUI) for managing containerized environments like Docker, Docker Swarm, and Kubernetes.
+
+Postgres/Redis: first services with no published ports reachable
+only by other containers on dev-homelab, by service name.
+
+Redis (Remote Dictionary Server) is an open-source, in-memory data structure store used primarily as a database, cache, message broker, and streaming engine. Unlike traditional databases that store data on hard drives or SSDs (disk-based storage), Redis keeps its entire dataset in RAM, allowing for exceptionally fast read and write speeds (sub-millisecond latency). While it operates in-memory, it can also persist data to disk through snapshots or append-only logs (AOF) to ensure durability.
