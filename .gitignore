@@ -1,1 +1,5 @@
 .env
+
+# Local agent context — not part of the public learning log
+CLAUDE.md
+.claude/
