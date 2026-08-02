@@ -28,3 +28,13 @@ Postgres/Redis: first services with no published ports reachable
 only by other containers on dev-homelab, by service name.
 
 Redis (Remote Dictionary Server) is an open-source, in-memory data structure store used primarily as a database, cache, message broker, and streaming engine. Unlike traditional databases that store data on hard drives or SSDs (disk-based storage), Redis keeps its entire dataset in RAM, allowing for exceptionally fast read and write speeds (sub-millisecond latency). While it operates in-memory, it can also persist data to disk through snapshots or append-only logs (AOF) to ensure durability.
+
+Secrets in version control: .gitignore only stops files that git is not already tracking. My .env was committed in the very first commit, so adding it to .gitignore later did nothing at all: git kept tracking it because it was already in the index. The fix is `git rm --cached .env`, which removes the file from git's index while leaving it on disk. From that point on the gitignore rule finally applies.
+
+Untracking is only half the job though. Every old commit still contains the file, so anyone who clones the repo can read the secrets out of the history. That means the secrets have to be treated as burned and rotated, i.e. replaced with new values, not just hidden.
+
+Rotating a database password is not the same as editing .env. POSTGRES_PASSWORD is only read once, the very first time the container initialises an empty data directory. After that the password lives inside the postgres volume, so changing the variable and restarting does nothing. The real rotation is an SQL statement against the running database (ALTER USER ... WITH PASSWORD ...), and .env is updated to match. Redis is the opposite: its password comes from the --requirepass command flag, which is re-read on every start, so there a restart is genuinely enough. Same for Traefik's basic-auth hash, which is just a label.
+
+Compose reads .env values through variable interpolation, so a literal dollar sign has to be written as $$. This matters for the bcrypt hash from htpasswd, which is full of them ($2y$05$...). Written with single dollars, Compose treats $2y and $05 as variable references, substitutes them with empty strings, and stores a truncated hash, which silently locks you out of the dashboard rather than throwing an error.
+
+A rotation is only real if the old credential actually stops working. Worth testing both directions: the new password succeeds and the old one is refused. Testing only the new one would not have caught a postgres password that was never really changed.
