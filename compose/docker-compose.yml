@@ -7,6 +7,7 @@ volumes:
   portainer-data:
   postgres-data:
   redis-data:
+  uptime-kuma-data:
 
 services:
   traefik:
@@ -82,3 +83,17 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:2.5.0
+    container_name: uptime-kuma
+    restart: unless-stopped
+    volumes:
+      - uptime-kuma-data:/app/data
+    networks:
+      - dev-homelab
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.uptime-kuma.rule=Host(`uptime-kuma.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.uptime-kuma.entrypoints=web"
+      - "traefik.http.services.uptime-kuma.loadbalancer.server.port=3001"
