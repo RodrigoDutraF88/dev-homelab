@@ -1,0 +1,20 @@
+# infrastructure/prometheus/prometheus.yml
+# Scrape configuration. Targets are addressed by Docker service name on the
+# shared dev-homelab network, so nothing here needs a published port.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Prometheus scraping itself — the cheapest way to tell whether it is alive.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Traefik publishes its metrics on the dedicated `metrics` entryPoint (:8082),
+  # which is deliberately not in the compose `ports:` block — only containers on
+  # this network can reach it. See infrastructure/traefik/traefik.yml.
+  - job_name: traefik
+    static_configs:
+      - targets: ["traefik:8082"]

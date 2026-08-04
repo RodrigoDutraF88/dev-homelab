@@ -8,6 +8,7 @@ volumes:
   postgres-data:
   redis-data:
   uptime-kuma-data:
+  prometheus-data:
 
 services:
   traefik:
@@ -97,3 +98,26 @@ services:
       - "traefik.http.routers.uptime-kuma.rule=Host(`uptime-kuma.${DOMAIN:-localhost}`)"
       - "traefik.http.routers.uptime-kuma.entrypoints=web"
       - "traefik.http.services.uptime-kuma.loadbalancer.server.port=3001"
+
+  prometheus:
+    image: prom/prometheus:v3.13.2
+    container_name: prometheus
+    restart: unless-stopped
+    # Overriding command drops the image defaults, so the console paths have to
+    # be repeated alongside the flags we actually care about.
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    volumes:
+      - ../infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro,Z
+      - prometheus-data:/prometheus
+    networks:
+      - dev-homelab
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prometheus.rule=Host(`prometheus.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.prometheus.entrypoints=web"
+      - "traefik.http.services.prometheus.loadbalancer.server.port=9090"

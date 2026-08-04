@@ -18,6 +18,8 @@ entryPoints:
     #       scheme: https
   websecure:
     address: ":443"
+  metrics:
+    address: ":8082"        # scraped by Prometheus over the shared network; never published to the host
 
 providers:
   docker:
@@ -27,6 +29,12 @@ providers:
   file:
     directory: /etc/traefik/dynamic
     watch: true
+
+metrics:
+  prometheus:
+    entryPoint: metrics
+    addEntryPointsLabels: true
+    addServicesLabels: true
 
 log:
   level: INFO
