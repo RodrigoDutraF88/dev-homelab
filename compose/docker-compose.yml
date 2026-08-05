@@ -9,6 +9,7 @@ volumes:
   redis-data:
   uptime-kuma-data:
   prometheus-data:
+  grafana-data:
 
 services:
   traefik:
@@ -121,3 +122,23 @@ services:
       - "traefik.http.routers.prometheus.rule=Host(`prometheus.${DOMAIN:-localhost}`)"
       - "traefik.http.routers.prometheus.entrypoints=web"
       - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+
+  grafana:
+    image: grafana/grafana:13.1.2
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_SERVER_ROOT_URL: http://grafana.${DOMAIN:-localhost}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ../infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro,Z
+    networks:
+      - dev-homelab
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.grafana.entrypoints=web"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
