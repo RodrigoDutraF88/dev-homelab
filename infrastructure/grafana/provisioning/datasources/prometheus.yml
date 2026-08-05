@@ -1,0 +1,15 @@
+# infrastructure/grafana/provisioning/datasources/prometheus.yml
+# Provisioned at startup, so the datasource is defined in this file rather than
+# clicked into the UI. `editable: false` makes Grafana refuse UI edits to it —
+# the file stays the source of truth.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy               # Grafana's backend queries Prometheus over the shared network
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
