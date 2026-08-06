@@ -47,3 +47,8 @@ Force pushing is not a complete fix, only a cleanup of the public record. Anyone
 
 uptime-kuma: Uptime Kuma is a self hosting monitoring tool
 What are the differences between traefik, pontainer and uptime kuma? Traefik gets traffic to your services, Portainer lets you manage the containers behind those services, Uptime Kuma watches whether those services are actually responding.
+
+Prometheus & Grafana: 
+Prometheus: is a metrics collection, time-series database, and alerting system.It features a query language called PromQL (Prometheus Query Language) that allows developers to filter, aggregate, and compute rates of change across metrics. 
+Grafana: is a data visualization, dashboarding and exploration platform. Grafana queries backends like Prometheus and renders the data into costumized graphs, heatmaps, gauges, status maps, and tables.
+How they work together: My server exposes a route, prometheus scrapes that route, stores the time-series points, and monitors for alert conditions. Grafana connects to prometheus, runs PromQL queries in the background and displays real-time health graphs on a dashboard.
