@@ -1,0 +1,48 @@
+# compose/production.yml
+# Production overlay — merged on top of docker-compose.yml, never used alone:
+#
+#   make prod-up        (docker compose -f docker-compose.yml -f production.yml up -d)
+#
+# Compose merges an overlay per key: `environment` and `labels` merge by key, and
+# `volumes` merge by *target* path — which is what lets the traefik.prod.yml line
+# below replace the development static config without disturbing the docker.sock,
+# dynamic/ or certs/ mounts declared in the base file.
+#
+# PREREQUISITE: DOMAIN in .env must be a real, publicly resolvable domain that
+# points at this host, with port 80 reachable from the internet. Let's Encrypt
+# cannot issue a certificate for localhost — there is no way to prove control of
+# a name nobody owns. Until then this overlay is inert and `make up` (plain HTTP
+# plus the self-signed certificate) is the right way to run the stack.
+#
+# Still to come here: resource limits, once there is a reason to tune them.
+
+volumes:
+  acme-data:      # holds acme.json — the issued certificates and the ACME account key
+
+services:
+  traefik:
+    volumes:
+      - ../infrastructure/traefik/traefik.prod.yml:/etc/traefik/traefik.yml:ro,Z
+      - acme-data:/letsencrypt
+    labels:
+      # The only routing change production makes: point each router's TLS at the
+      # ACME resolver instead of letting it fall back to the default certificate.
+      # Entrypoints are already websecure-only in the base file, and :80 already
+      # redirects — the two configs differ solely in where the cert comes from.
+      - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
+
+  portainer:
+    labels:
+      - "traefik.http.routers.portainer.tls.certresolver=letsencrypt"
+
+  uptime-kuma:
+    labels:
+      - "traefik.http.routers.uptime-kuma.tls.certresolver=letsencrypt"
+
+  prometheus:
+    labels:
+      - "traefik.http.routers.prometheus.tls.certresolver=letsencrypt"
+
+  grafana:
+    labels:
+      - "traefik.http.routers.grafana.tls.certresolver=letsencrypt"

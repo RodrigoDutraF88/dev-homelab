@@ -11,7 +11,11 @@
 
 COMPOSE = docker compose --env-file .env -f compose/docker-compose.yml
 
-.PHONY: up down restart logs ps config pull
+# Production adds the TLS overlay. Inert until DOMAIN is a real public domain —
+# see the header of compose/production.yml.
+PROD = $(COMPOSE) -f compose/production.yml
+
+.PHONY: up down restart logs ps config pull certs prod-config prod-up prod-down
 
 up:
 	$(COMPOSE) up -d
@@ -33,3 +37,17 @@ config:
 
 pull:
 	$(COMPOSE) pull
+
+# Self-signed certificate for *.localhost, so HTTPS works locally. Gitignored —
+# run this once per machine, before the first `make up`.
+certs:
+	./scripts/gen-dev-certs.sh
+
+prod-config:
+	$(PROD) config
+
+prod-up:
+	$(PROD) up -d
+
+prod-down:
+	$(PROD) down

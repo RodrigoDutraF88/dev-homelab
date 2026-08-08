@@ -10,12 +10,14 @@ api:
 entryPoints:
   web:
     address: ":80"
-    # Uncomment once you add a TLS-terminating setup (step 8 in the roadmap):
-    # http:
-    #   redirections:
-    #     entryPoint:
-    #       to: websecure
-    #       scheme: https
+    # Everything is TLS now. A router with tls=true only matches TLS connections,
+    # so plain :80 requests would 404 without this — they are redirected instead.
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
   websecure:
     address: ":443"
   metrics:
