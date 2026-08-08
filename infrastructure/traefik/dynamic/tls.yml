@@ -1,0 +1,18 @@
+# infrastructure/traefik/dynamic/tls.yml
+# Picked up by the file provider watching this directory.
+#
+# Declares the default certificate — the one Traefik serves when a request does
+# not match a router with its own certificate. Locally that is the self-signed
+# pair from scripts/gen-dev-certs.sh, which is what makes HTTPS work on
+# *.localhost. In production the ACME resolver issues a real per-host
+# certificate and this stays behind it as the fallback, so Traefik never has to
+# invent its own throwaway cert for unmatched requests (a direct IP hit, say).
+#
+# Run `make certs` before `make up`, on any machine — the files are gitignored.
+
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/traefik/certs/local-cert.pem
+        keyFile: /etc/traefik/certs/local-key.pem

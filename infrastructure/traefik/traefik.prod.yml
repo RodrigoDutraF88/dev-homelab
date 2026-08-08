@@ -1,0 +1,75 @@
+# infrastructure/traefik/traefik.prod.yml
+# Static configuration used by the production overlay (compose/production.yml),
+# mounted over traefik.yml at the same path. It differs from the development
+# config in exactly two ways: :80 redirects to :443, and a Let's Encrypt
+# resolver issues the certificates instead of the self-signed default.
+#
+# Why the ACME email is hardcoded here instead of coming from .env like every
+# other secret: Traefik loads its static configuration from a single source. With
+# --configFile set, TRAEFIK_* environment variables are ignored entirely — this
+# was verified against traefik:v3.6, not assumed. Compose only interpolates
+# variables into the compose file, never into a file it bind-mounts.
+
+api:
+  dashboard: true
+  insecure: false
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true      # 308; the ACME challenge below is exempted automatically
+  websecure:
+    address: ":443"
+  metrics:
+    address: ":8082"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: dev-homelab
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      # Expiry notices go here. Must be a real address before this is activated.
+      email: "change-me@example.com"
+      storage: /letsencrypt/acme.json
+      # HTTP-01: Let's Encrypt connects *inbound* on :80 to prove control of the
+      # domain, so DOMAIN must resolve publicly to this host and port 80 must be
+      # forwarded to it. Traefik routes /.well-known/acme-challenge/ itself, at a
+      # higher priority than the redirection above, so the challenge is not
+      # caught by the 308.
+      #
+      # Behind NAT with no port forwarding, replace httpChallenge with:
+      #   dnsChallenge:
+      #     provider: cloudflare      # or another supported provider
+      #     resolvers: ["1.1.1.1:53"]
+      # and pass the provider's API token to the container as an env var. That
+      # path also supports wildcard certificates; HTTP-01 does not.
+      httpChallenge:
+        entryPoint: web
+      # Staging issues untrusted certificates but has generous rate limits. Keep
+      # it until a certificate is confirmed to issue, then comment it out and
+      # delete acme.json. Production limits are strict: 5 failed validations per
+      # account per hour, 50 certificates per registered domain per week.
+      caServer: https://acme-staging-v02.api.letsencrypt.org/directory
+
+metrics:
+  prometheus:
+    entryPoint: metrics
+    addEntryPointsLabels: true
+    addServicesLabels: true
+
+log:
+  level: INFO
+
+accessLog: {}
