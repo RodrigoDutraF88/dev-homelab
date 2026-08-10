@@ -18,3 +18,10 @@ scrape_configs:
   - job_name: traefik
     static_configs:
       - targets: ["traefik:8082"]
+
+  # Host-level metrics: CPU, memory, disk, filesystems, load. This is what the
+  # community "Node Exporter Full" dashboard draws from — without this job it has
+  # no data at all, however correct the dashboard itself is.
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]

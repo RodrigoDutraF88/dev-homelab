@@ -124,6 +124,44 @@ services:
       - "traefik.http.routers.prometheus.entrypoints=websecure"
       - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
 
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    container_name: node-exporter
+    restart: unless-stopped
+    # Reads the host's own CPU, memory, disk and filesystem counters rather than
+    # the container's. /proc and /sys are bind-mounted read-only and pointed at
+    # with --path.*.
+    #
+    # These mounts deliberately have no :Z. Relabelling is for config we own —
+    # applying it to /proc, /sys or / would rewrite SELinux labels on the host's
+    # own filesystem.
+    #
+    # Known limitation: network metrics report this container's interfaces (eth0),
+    # not the host's wifi, because the exporter sits on the bridge network. The
+    # network panels of the "Node Exporter Full" dashboard are therefore
+    # meaningless; CPU, memory, disk and load are accurate. Fixing it means
+    # network_mode: host, which would put :9100 on every host interface — not
+    # worth trading the no-published-ports rule for a few graphs.
+    #
+    # pid: host is required, not decorative: without it the filesystem collector
+    # fails with "open /host/proc/1/mountinfo: permission denied" and every disk
+    # metric disappears. Verified by running the same image both ways.
+    pid: host
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/host/root"
+      # Without this, every container's overlay and tmpfs mount is reported as a
+      # separate filesystem and the dashboard's disk panels turn into noise.
+      - "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+|var/lib/containers/.+)($$|/)"
+      - "--collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|mqueue|nsfs|overlay|proc|procfs|pstore|securityfs|selinuxfs|squashfs|sysfs|tracefs)$$"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro,rslave
+    networks:
+      - dev-homelab
+
   grafana:
     image: grafana/grafana:13.1.2
     container_name: grafana
