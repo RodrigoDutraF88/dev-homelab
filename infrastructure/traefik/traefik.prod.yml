@@ -22,9 +22,30 @@ entryPoints:
         entryPoint:
           to: websecure
           scheme: https
-          permanent: true      # 308; the ACME challenge below is exempted automatically
+          permanent: true
   websecure:
     address: ":443"
+    # TLS is configured once here rather than per router. Every router in the
+    # compose file is already `websecure` + `tls=true` and inherits this, so one
+    # wildcard certificate covers traefik./portainer./grafana./prometheus./
+    # uptime-kuma. and anything added later, with no extra labels.
+    #
+    # One certificate is not just tidiness with DuckDNS: it holds a single TXT
+    # record at a time, so five separate challenges could overwrite each other's
+    # answer. A wildcard needs exactly one.
+    #
+    # The domain is written out rather than taken from $DOMAIN for the same
+    # reason as the email below — Compose does not interpolate into a bind-mounted
+    # file, and Traefik ignores env vars when --configFile is set.
+    #
+    # The apex (rodrigodutra-homelab.duckdns.org, no subdomain) is deliberately
+    # not a SAN here: covering both it and the wildcard needs two TXT records at
+    # once, which DuckDNS cannot do. Nothing in this stack uses the apex.
+    http:
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "*.rodrigodutra-homelab.duckdns.org"
   metrics:
     address: ":8082"
 
@@ -40,28 +61,39 @@ providers:
 certificatesResolvers:
   letsencrypt:
     acme:
-      # Expiry notices go here. Must be a real address before this is activated.
-      email: "change-me@example.com"
+      # Expiry notices go here.
+      email: "rodrigodutraf88@gmail.com"
       storage: /letsencrypt/acme.json
-      # HTTP-01: Let's Encrypt connects *inbound* on :80 to prove control of the
-      # domain, so DOMAIN must resolve publicly to this host and port 80 must be
-      # forwarded to it. Traefik routes /.well-known/acme-challenge/ itself, at a
-      # higher priority than the redirection above, so the challenge is not
-      # caught by the 308.
+      # DNS-01: control of the domain is proved by publishing a TXT record, which
+      # Traefik does through the DuckDNS API. The whole exchange is outbound, so
+      # no port is forwarded and nothing here is reachable from the internet —
+      # the DuckDNS record points at this machine's LAN address.
       #
-      # Behind NAT with no port forwarding, replace httpChallenge with:
-      #   dnsChallenge:
-      #     provider: cloudflare      # or another supported provider
-      #     resolvers: ["1.1.1.1:53"]
-      # and pass the provider's API token to the container as an env var. That
-      # path also supports wildcard certificates; HTTP-01 does not.
-      httpChallenge:
-        entryPoint: web
-      # Staging issues untrusted certificates but has generous rate limits. Keep
-      # it until a certificate is confirmed to issue, then comment it out and
-      # delete acme.json. Production limits are strict: 5 failed validations per
-      # account per hour, 50 certificates per registered domain per week.
-      caServer: https://acme-staging-v02.api.letsencrypt.org/directory
+      # The DUCKDNS_TOKEN that authorises it is passed to the container as an
+      # environment variable (see compose/production.yml). That works even though
+      # Traefik ignores TRAEFIK_* env vars when --configFile is set: provider
+      # credentials are read straight from the process environment by the ACME
+      # library, not through Traefik's static config parser. Two different
+      # mechanisms that happen to both use environment variables.
+      #
+      # resolvers is which nameserver to poll when checking whether the TXT record
+      # has propagated. Public ones are used rather than the host's, which may
+      # answer from a cache.
+      dnsChallenge:
+        provider: duckdns
+        resolvers:
+          - "1.1.1.1:53"
+          - "8.8.8.8:53"
+      # Now issuing real certificates. Staging was used first to prove the DNS-01
+      # exchange worked without spending production quota; putting the line back
+      # means also deleting the acme-data volume, since an account key from one
+      # environment is not valid in the other.
+      #
+      # Production limits: 5 failed validations per account per hour, 50
+      # certificates per registered domain per week. duckdns.org is on the Public
+      # Suffix List, so rodrigodutra-homelab.duckdns.org has its own budget rather
+      # than sharing one with every other DuckDNS user.
+      # caServer: https://acme-staging-v02.api.letsencrypt.org/directory
 
 metrics:
   prometheus:

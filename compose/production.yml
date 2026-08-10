@@ -8,11 +8,16 @@
 # below replace the development static config without disturbing the docker.sock,
 # dynamic/ or certs/ mounts declared in the base file.
 #
-# PREREQUISITE: DOMAIN in .env must be a real, publicly resolvable domain that
-# points at this host, with port 80 reachable from the internet. Let's Encrypt
-# cannot issue a certificate for localhost — there is no way to prove control of
-# a name nobody owns. Until then this overlay is inert and `make up` (plain HTTP
-# plus the self-signed certificate) is the right way to run the stack.
+# PREREQUISITES, both in .env:
+#   DOMAIN=rodrigodutra-homelab.duckdns.org
+#   DUCKDNS_TOKEN=<the token from duckdns.org>
+#
+# Certificates come from Let's Encrypt over a DNS-01 challenge, so nothing is
+# exposed to the internet and no port is forwarded — the DuckDNS record points at
+# this machine's LAN address, and only the ACME conversation leaves the network.
+# There are no per-router changes here: the wildcard certificate is configured
+# once on the websecure entryPoint in traefik.prod.yml, and every router inherits
+# it. Adding a service later needs no production-specific label at all.
 #
 # Still to come here: resource limits, once there is a reason to tune them.
 
@@ -24,25 +29,7 @@ services:
     volumes:
       - ../infrastructure/traefik/traefik.prod.yml:/etc/traefik/traefik.yml:ro,Z
       - acme-data:/letsencrypt
-    labels:
-      # The only routing change production makes: point each router's TLS at the
-      # ACME resolver instead of letting it fall back to the default certificate.
-      # Entrypoints are already websecure-only in the base file, and :80 already
-      # redirects — the two configs differ solely in where the cert comes from.
-      - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
-
-  portainer:
-    labels:
-      - "traefik.http.routers.portainer.tls.certresolver=letsencrypt"
-
-  uptime-kuma:
-    labels:
-      - "traefik.http.routers.uptime-kuma.tls.certresolver=letsencrypt"
-
-  prometheus:
-    labels:
-      - "traefik.http.routers.prometheus.tls.certresolver=letsencrypt"
-
-  grafana:
-    labels:
-      - "traefik.http.routers.grafana.tls.certresolver=letsencrypt"
+    environment:
+      # Read by the ACME library directly, not by Traefik's static config parser —
+      # which is why this works where a TRAEFIK_* variable would be ignored.
+      DUCKDNS_TOKEN: ${DUCKDNS_TOKEN}

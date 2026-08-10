@@ -20,6 +20,15 @@ entryPoints:
           permanent: true
   websecure:
     address: ":443"
+    # TLS is switched on here, for every router on this entryPoint, rather than
+    # with a tls=true label on each service. An empty block means "TLS with the
+    # default certificate" — the self-signed pair from dynamic/tls.yml.
+    #
+    # This is not just tidiness: a router that declares its own tls overrides the
+    # entryPoint's TLS defaults completely, which in production would silently
+    # drop the certResolver and leave it serving the self-signed fallback.
+    http:
+      tls: {}
   metrics:
     address: ":8082"        # scraped by Prometheus over the shared network; never published to the host
 
