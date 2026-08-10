@@ -15,7 +15,7 @@ COMPOSE = docker compose --env-file .env -f compose/docker-compose.yml
 # see the header of compose/production.yml.
 PROD = $(COMPOSE) -f compose/production.yml
 
-.PHONY: up down restart logs ps config pull certs prod-config prod-up prod-down
+.PHONY: up down restart logs ps config pull certs prod-config prod-up prod-down backup
 
 up:
 	$(COMPOSE) up -d
@@ -51,3 +51,8 @@ prod-up:
 
 prod-down:
 	$(PROD) down
+
+# Dump Postgres (database + roles) to $BACKUP_DIR, default ~/dev-homelab-backups.
+# Restoring is deliberately not a make target — see scripts/restore-postgres.sh.
+backup:
+	./scripts/backup-postgres.sh

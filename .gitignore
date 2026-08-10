@@ -6,3 +6,6 @@ CLAUDE.md
 
 # Self-signed dev certificates — regenerate with `make certs`, never commit a private key
 infrastructure/traefik/certs/
+
+# Backups, if BACKUP_DIR is ever pointed inside the repo
+backups/
