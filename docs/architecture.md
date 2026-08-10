@@ -29,7 +29,7 @@ Role: single-node Docker host.
   removes the need to hand-edit proxy config every time a service is
   added or removed.
  **External application via GHCR, not a git submodule or copy**: the
-  full-stack app (NestJS + Next.js + Prisma + PostgreSQL) has its own
+  full-stack app (Next.js + tRPC + Prisma + NextAuth, a single container) has its own
   repository and its own CI/CD pipeline that publishes to GHCR. This repo
   only references the published image tag; 
  **Single external Docker network (`dev-homelab`)**: all services share
