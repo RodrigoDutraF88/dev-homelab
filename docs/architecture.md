@@ -18,7 +18,7 @@ Role: single-node Docker host.
 ## Repository layout and why
 
  `apps/`: Small services whose source *lives* in this repo, I'll add my recent full-stack project that i made: Bookshelf App. The main app does not live here, it's pulled from GHCR as a prebuilt image, keeping this repo focused on infrastructure, not application code.
- `infrastructure/`: Per-service configuration that isn't just a Compose block: Traefik static/dynamic config, Prometheus scrape configs, Grafana provisioning, etc.
+ `infrastructure/`: Per-service configuration that isn't just a Compose block: Traefik static/dynamic config (dev and prod), Prometheus scrape configs, and Grafana provisioning — both its datasource and its dashboards, as files.
  `compose/`: The Compose files that actually wire everything together. `docker-compose.yml` for local/dev, `production.yml` as an overlay for prod-only concerns (TLS, resource limits, pinned tags). 
  `scripts/`: Bootstrap / maintenance scripts (host provisioning, backups, cert renewal helpers). 
  `docs/`: This file, plus a running learning journal of decisions.
@@ -39,6 +39,15 @@ Role: single-node Docker host.
  **No ports published except 80/443**: every other service (Postgres,
   Redis, the dashboard's raw :8080) stays internal-only and is reached
   either through Traefik or through `docker exec` / internal networking.
+ **Metrics come from exporters, not from the services themselves**: Prometheus
+  only stores and queries, Grafana only draws. Anything that is not already
+  instrumented needs a process that translates its state into metrics —
+  node-exporter for the host, cAdvisor for the containers. Traefik is the
+  exception, since it exposes Prometheus metrics natively.
+ **Grafana is provisioned, never clicked**: the Prometheus datasource and every
+  dashboard live in `infrastructure/grafana/provisioning/` and are marked
+  non-editable, so the browser cannot become a second source of truth. Changing a
+  dashboard means exporting its JSON and committing it.
 
 
 ## Roadmap 
@@ -48,8 +57,9 @@ Role: single-node Docker host.
 3. PostgreSQL + Redis (shared data services)
 4. The Bookshelf App full-stack app, pulled from GHCR, routed through Traefik
 5. Uptime Kuma (uptime monitoring)
-6. Prometheus (metrics collection)
-7. Grafana (dashboards, fed by Prometheus)
+6. Prometheus (metrics collection), with node-exporter for host metrics and
+   cAdvisor for per-container metrics
+7. Grafana (dashboards, fed by Prometheus, provisioned from files)
 8. TLS via Let's Encrypt, `compose/production.yml` activated
 9. Backup scripts for Postgres volumes
 10. Host provisioning script (`scripts/`) to rebuild the machine from scratch if needed
