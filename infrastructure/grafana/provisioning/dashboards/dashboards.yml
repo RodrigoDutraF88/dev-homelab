@@ -1,0 +1,31 @@
+# infrastructure/grafana/provisioning/dashboards/dashboards.yml
+# Loads every .json in this directory as a dashboard at startup, the same way
+# datasources/prometheus.yml loads the datasource.
+#
+# This closes the one hole in the repo's "nothing is clicked into existence"
+# rule: node-exporter-full.json was originally imported through the Grafana UI
+# and existed only inside the grafana-data volume, so a rebuilt volume would have
+# lost it. Now the file is the source of truth and the volume is disposable.
+#
+# node-exporter-full.json is the community "Node Exporter Full" dashboard,
+# grafana.com dashboard 1860 by rfmoz (https://grafana.com/grafana/dashboards/1860),
+# exported from this instance with its `id` stripped and its datasource variable
+# pinned to the provisioned Prometheus.
+#
+# allowUiUpdates: false matches `editable: false` on the datasource — edits made
+# in the browser cannot be saved over the file. To change a dashboard, edit it in
+# the UI, use Export > JSON, and commit the result.
+
+apiVersion: 1
+
+providers:
+  - name: dev-homelab
+    orgId: 1
+    folder: ""              # top level; no folder hierarchy to maintain yet
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false
