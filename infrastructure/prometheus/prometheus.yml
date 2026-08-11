@@ -25,3 +25,20 @@ scrape_configs:
   - job_name: node
     static_configs:
       - targets: ["node-exporter:9100"]
+
+  # Per-container metrics. cAdvisor is by far the noisiest source here, so the
+  # relabel rules below drop the series this homelab has no use for before they
+  # ever reach the database — retention is 15d on a laptop disk.
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+    metric_relabel_configs:
+      # Per-CPU-core breakdowns per container: cores × containers series, and the
+      # aggregate container_cpu_usage_seconds_total is what anyone actually graphs.
+      - source_labels: [__name__]
+        regex: "container_cpu_(user|system)_seconds_total"
+        action: drop
+      # Per-filesystem-device stats for every container's overlay layer.
+      - source_labels: [__name__]
+        regex: "container_fs_(io_current|io_time_seconds_total|io_time_weighted_seconds_total|sector_reads_total|sector_writes_total)"
+        action: drop
