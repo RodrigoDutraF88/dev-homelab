@@ -44,6 +44,17 @@ Role: single-node Docker host.
   instrumented needs a process that translates its state into metrics —
   node-exporter for the host, cAdvisor for the containers. Traefik is the
   exception, since it exposes Prometheus metrics natively.
+ **The app gets a role, not the server**: the Bookshelf app connects to the shared
+  Postgres with its own `bookshelf` role and `bookshelf` database, not the homelab
+  superuser. Sharing an instance is not sharing a database — this is the reason
+  the data services were built before the app instead of letting it ship its own
+  Postgres, which is what its local development compose file does.
+ **Migrations run in a one-shot container, not at app startup**: `bookshelf-migrate`
+  reuses the application image (the Prisma migration files ship inside it) with a
+  replaced entrypoint, waits for `postgres` to be `service_healthy`, applies
+  `prisma migrate deploy`, and exits. The app is gated behind it with
+  `condition: service_completed_successfully`. Keeping this out of the app's own
+  startup means no replica can race another to migrate the same schema.
  **Grafana is provisioned, never clicked**: the Prometheus datasource and every
   dashboard live in `infrastructure/grafana/provisioning/` and are marked
   non-editable, so the browser cannot become a second source of truth. Changing a
@@ -55,7 +66,9 @@ Role: single-node Docker host.
 1. Traefik (reverse proxy + dashboard)
 2. Portainer (container management UI)
 3. PostgreSQL + Redis (shared data services)
-4. The Bookshelf App full-stack app, pulled from GHCR, routed through Traefik
+4. The Bookshelf App full-stack app, pulled from GHCR (`ghcr.io/rodrigodutraf88/bookshelf-app`,
+   published on `v*` tags by the app repository's own CI), routed through Traefik,
+   with schema migrations applied by a one-shot container against the shared Postgres
 5. Uptime Kuma (uptime monitoring)
 6. Prometheus (metrics collection), with node-exporter for host metrics and
    cAdvisor for per-container metrics
