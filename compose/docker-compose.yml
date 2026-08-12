@@ -162,6 +162,65 @@ services:
     networks:
       - dev-homelab
 
+  # Runs prisma's migrations, then exits. The app below will not start until this
+  # has completed successfully, which is the first thing in this stack to actually
+  # use the postgres healthcheck rather than just declare one.
+  #
+  # It borrows the app image because that is where the migration files live
+  # (/app/prisma). The prisma CLI itself is a devDependency and is NOT in the
+  # runtime image, so npx fetches it at run time — hence `--yes` and the pinned
+  # version. It runs as root because the image's `nextjs` user has no writable
+  # home for an npm cache.
+  bookshelf-migrate:
+    image: ghcr.io/rodrigodutraf88/bookshelf-app:1.0.0
+    container_name: bookshelf-migrate
+    restart: "no"
+    user: "0"
+    entrypoint: ["npx", "--yes", "prisma@6.6.0", "migrate", "deploy"]
+    environment:
+      DATABASE_URL: postgresql://bookshelf:${BOOKSHELF_DB_PASSWORD}@postgres:5432/bookshelf
+      DIRECT_URL: postgresql://bookshelf:${BOOKSHELF_DB_PASSWORD}@postgres:5432/bookshelf
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - dev-homelab
+
+  bookshelf:
+    image: ghcr.io/rodrigodutraf88/bookshelf-app:1.0.0
+    container_name: bookshelf
+    restart: unless-stopped
+    depends_on:
+      bookshelf-migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      # Its own role and database inside the shared Postgres — the reason that
+      # service was built before the app. DIRECT_URL is the same host here: the
+      # split exists for Supabase's pooler, which this stack does not have.
+      DATABASE_URL: postgresql://bookshelf:${BOOKSHELF_DB_PASSWORD}@postgres:5432/bookshelf
+      DIRECT_URL: postgresql://bookshelf:${BOOKSHELF_DB_PASSWORD}@postgres:5432/bookshelf
+      AUTH_SECRET: ${BOOKSHELF_AUTH_SECRET}
+      # NextAuth builds OAuth callback URLs from this, and needs to be told to
+      # trust the proxy's forwarded headers or it will construct http:// links.
+      AUTH_URL: https://bookshelf.${DOMAIN:-localhost}
+      AUTH_TRUST_HOST: "true"
+      AUTH_DISCORD_ID: ${AUTH_DISCORD_ID}
+      AUTH_DISCORD_SECRET: ${AUTH_DISCORD_SECRET}
+      AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID}
+      AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      # NEXT_PUBLIC_* is inlined into the client bundle at build time, so setting
+      # it here only reaches server-side code. The image was built without it.
+      NEXT_PUBLIC_GOOGLE_BOOKS_API_KEY: ${NEXT_PUBLIC_GOOGLE_BOOKS_API_KEY}
+    networks:
+      - dev-homelab
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bookshelf.rule=Host(`bookshelf.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.bookshelf.entrypoints=websecure"
+      - "traefik.http.services.bookshelf.loadbalancer.server.port=3000"
+
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.55.1
     container_name: cadvisor
