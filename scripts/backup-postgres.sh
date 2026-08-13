@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 # Back up the shared Postgres instance.
 #
-# Two files per run, because a dump of a database alone is not enough to rebuild
-# it: roles live outside any single database, so restoring a dump whose owner
-# does not exist fails.
+# Every database is dumped, not just POSTGRES_DB. The instance is shared — the
+# Bookshelf app has its own `bookshelf` database alongside `homelab`, and any
+# future app will do the same. This script therefore asks Postgres which
+# databases exist rather than being told, so a new one is protected the moment it
+# is created instead of the day someone remembers to edit this file. That gap was
+# real: `bookshelf` existed and went unbacked-up until 2026-08-13.
+#
+# One file per database, plus one for the globals, because a dump of a database
+# alone is not enough to rebuild it: roles live outside any single database, so
+# restoring a dump whose owner does not exist fails.
 #
 #   <db>-<timestamp>.dump        pg_dump custom format, compressed, restored with pg_restore
 #   globals-<timestamp>.sql      roles and their passwords, restored with psql
@@ -32,7 +39,6 @@ CONTAINER="postgres"
 env_value() { grep -E "^$1=" "$ENV_FILE" | tail -n1 | cut -d= -f2- || true; }
 
 PG_USER="$(env_value POSTGRES_USER)"
-PG_DB="$(env_value POSTGRES_DB)"
 # Backups default to outside the repo on purpose: a destructive git operation
 # rebuilds the working tree and would take them with it.
 BACKUP_DIR="${BACKUP_DIR:-$(env_value BACKUP_DIR)}"
@@ -40,41 +46,59 @@ BACKUP_DIR="${BACKUP_DIR:-$HOME/dev-homelab-backups}"
 RETENTION_DAYS="${RETENTION_DAYS:-$(env_value RETENTION_DAYS)}"
 RETENTION_DAYS="${RETENTION_DAYS:-14}"
 
-[[ -n "$PG_USER" && -n "$PG_DB" ]] || { echo "POSTGRES_USER / POSTGRES_DB missing from .env" >&2; exit 1; }
+[[ -n "$PG_USER" ]] || { echo "POSTGRES_USER missing from .env" >&2; exit 1; }
 
 docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null | grep -q true \
   || { echo "container '$CONTAINER' is not running — start the stack with 'make up'" >&2; exit 1; }
 
+# Ask the server what to dump. Templates are excluded because they cannot be
+# connected to, and datallowconn filters anything else marked unconnectable.
+mapfile -t DATABASES < <(docker exec "$CONTAINER" psql -U "$PG_USER" -d postgres -At \
+  -c "select datname from pg_database where datallowconn and not datistemplate order by datname")
+
+[[ ${#DATABASES[@]} -gt 0 ]] || { echo "no databases returned by postgres" >&2; exit 1; }
+
 mkdir -p "$BACKUP_DIR"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-DUMP="$BACKUP_DIR/$PG_DB-$STAMP.dump"
 GLOBALS="$BACKUP_DIR/globals-$STAMP.sql"
 
-# Write to a temporary name and rename only on success. A backup interrupted
-# halfway through must not be left sitting in the directory looking valid.
-tmp_dump="$DUMP.partial"
-tmp_globals="$GLOBALS.partial"
-cleanup() { rm -f "$tmp_dump" "$tmp_globals"; }
+# Write to temporary names and rename only on success. A backup interrupted
+# halfway through must not be left sitting in the directory looking valid. The
+# array is cleaned as a whole, so a failure on the third database does not leave
+# the first two as .partial litter.
+PARTIALS=()
+cleanup() { [[ ${#PARTIALS[@]} -gt 0 ]] && rm -f -- "${PARTIALS[@]}"; }
 trap cleanup EXIT
 
-docker exec "$CONTAINER" pg_dump -U "$PG_USER" -d "$PG_DB" --format=custom > "$tmp_dump"
+for db in "${DATABASES[@]}"; do
+  dump="$BACKUP_DIR/$db-$STAMP.dump"
+  tmp="$dump.partial"
+  PARTIALS+=("$tmp")
+
+  docker exec "$CONTAINER" pg_dump -U "$PG_USER" -d "$db" --format=custom > "$tmp"
+
+  # Prove the dump is readable before calling it a backup. pg_restore --list
+  # parses the archive's table of contents, so a truncated or corrupt file fails
+  # here rather than on the day it is needed.
+  docker exec -i "$CONTAINER" pg_restore --list > /dev/null < "$tmp" \
+    || { echo "dump of '$db' failed verification — not keeping it" >&2; exit 1; }
+
+  mv "$tmp" "$dump"
+  echo "$(basename "$dump")     $(du -h "$dump" | cut -f1)"
+done
+
+tmp_globals="$GLOBALS.partial"
+PARTIALS+=("$tmp_globals")
 docker exec "$CONTAINER" pg_dumpall -U "$PG_USER" --globals-only > "$tmp_globals"
-
-# Prove the dump is readable before calling it a backup. pg_restore --list parses
-# the archive's table of contents, so a truncated or corrupt file fails here
-# rather than on the day it is needed.
-docker exec -i "$CONTAINER" pg_restore --list > /dev/null < "$tmp_dump" \
-  || { echo "dump failed verification — not keeping it" >&2; exit 1; }
-
-mv "$tmp_dump" "$DUMP"
 mv "$tmp_globals" "$GLOBALS"
-trap - EXIT
-
-echo "$(basename "$DUMP")     $(du -h "$DUMP" | cut -f1)"
 echo "$(basename "$GLOBALS")  $(du -h "$GLOBALS" | cut -f1)"
 
+PARTIALS=()
+trap - EXIT
+
 # Prune old runs, but never the newest file: if the backup job silently stopped
-# running weeks ago, a stale backup still beats no backup at all.
+# running weeks ago, a stale backup still beats no backup at all. Pruning is done
+# per database so that one database's history cannot be shortened by another's.
 prune() {
   local pattern="$1" i
   local files=()
@@ -87,7 +111,14 @@ prune() {
     fi
   done
 }
-prune "$PG_DB-*.dump"
+
+for db in "${DATABASES[@]}"; do
+  prune "$db-*.dump"
+done
 prune "globals-*.sql"
 
-echo "backups in $BACKUP_DIR, keeping $RETENTION_DAYS days"
+# Dumps of a database that no longer exists are deliberately left alone: they are
+# not matched by any pattern above, and a dropped database is exactly the case
+# where an old backup is most likely to be wanted.
+
+echo "backed up ${#DATABASES[@]} databases (${DATABASES[*]}) to $BACKUP_DIR, keeping $RETENTION_DAYS days"
