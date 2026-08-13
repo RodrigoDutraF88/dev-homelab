@@ -55,11 +55,47 @@ Role: single-node Docker host.
   `prisma migrate deploy`, and exits. The app is gated behind it with
   `condition: service_completed_successfully`. Keeping this out of the app's own
   startup means no replica can race another to migrate the same schema.
+ **Black-box probing for anything that cannot be instrumented**: the exporters
+  above all report from the inside, which requires the target to expose metrics.
+  The Bookshelf app does not, so blackbox-exporter checks it from the outside
+  instead. Every service is probed twice — once internally by container name, and
+  once publicly through Traefik — because "the app is down" and "the path to the
+  app is down" are different outages. The public probe also reports TLS
+  certificate expiry, which is how a failed wildcard renewal would surface.
  **Grafana is provisioned, never clicked**: the Prometheus datasource and every
   dashboard live in `infrastructure/grafana/provisioning/` and are marked
   non-editable, so the browser cannot become a second source of truth. Changing a
   dashboard means exporting its JSON and committing it.
 
+
+## Manual steps not captured as code
+
+This project's rule is that nothing is clicked into existence without also being
+captured in a file. These are the places that rule is currently broken, recorded
+here so that rebuilding the host from scratch (roadmap item 10) does not silently
+lose them.
+
+**Grafana dashboards.** The "Node Exporter Full" dashboard was imported through
+the UI and lives only in the `grafana-data` volume. The datasource *is*
+provisioned from files; the dashboards are not.
+
+**Uptime Kuma monitors.** Monitors are stored in a sqlite database inside the
+`uptime-kuma-data` volume and can only be created through the web UI — Uptime
+Kuma has no file-based provisioning. The Bookshelf monitor to recreate:
+
+| Field | Value |
+|---|---|
+| Monitor Type | HTTP(s) |
+| Friendly Name | Bookshelf |
+| URL | `https://bookshelf.<DOMAIN>/login` |
+| Heartbeat Interval | 60 seconds |
+| Retries | 2 |
+| Accepted Status Codes | 200-299 |
+
+`/login` rather than `/` on purpose: the root answers 307, redirecting to it.
+Note that the same signal is already collected from files by the blackbox-http
+job in `infrastructure/prometheus/prometheus.yml`, so this monitor is a
+convenience, not the system of record.
 
 ## Roadmap 
 
