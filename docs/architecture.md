@@ -62,6 +62,13 @@ Role: single-node Docker host.
   once publicly through Traefik — because "the app is down" and "the path to the
   app is down" are different outages. The public probe also reports TLS
   certificate expiry, which is how a failed wildcard renewal would surface.
+ **Alert rules are evaluated by Prometheus, delivered by Alertmanager**: rules in
+  `infrastructure/prometheus/rules/` describe *what is wrong*; `alertmanager.yml`
+  decides *what happens about it* — grouping, deduplication, silencing. Keeping
+  the two separate means adding a notification channel later touches one file and
+  no rules. Every `for:` clause is minutes, not instant, so a single missed scrape
+  during a laptop suspend is not an outage. A permanently-firing `Watchdog` rule
+  covers the one thing no other alert can: Prometheus cannot report its own death.
  **Scheduled work is a systemd timer, not cron**: the unit files live in
   `infrastructure/systemd/` and are installed by a script, so the schedule is part
   of the repository like everything else — a crontab entry would exist only on the
