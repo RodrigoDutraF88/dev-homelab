@@ -1,0 +1,32 @@
+# Runs scripts/backup-postgres.sh once. Paired with dev-homelab-backup.timer,
+# which is the thing that gets enabled — a .service with no [Install] section is
+# only ever started by its timer.
+#
+# __REPO_ROOT__ is substituted with the real path by scripts/install-backup-timer.sh.
+# The installed copy under ~/.config/systemd/user/ is generated, not edited by hand:
+# change this file and re-run the installer.
+#
+# This is a *user* unit, so it runs as the same account that owns the repo, the
+# .env it reads and the backup directory it writes to. That also means it needs
+# lingering enabled to run while logged out, which the installer handles.
+
+[Unit]
+Description=dev-homelab Postgres backup
+Documentation=file://__REPO_ROOT__/scripts/backup-postgres.sh
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=__REPO_ROOT__
+
+# Persistent=true means a backup missed while the laptop was off runs at the next
+# boot — which is likely to be *before* the containers are up, and the script
+# exits non-zero if postgres is not running. Wait for it rather than record a
+# spurious failure. Five minutes is generous; the stack normally settles in well
+# under one.
+ExecStartPre=/bin/bash -c 'for i in $(seq 1 60); do \
+  if docker inspect -f "{{.State.Running}}" postgres 2>/dev/null | grep -q true; then exit 0; fi; \
+  sleep 5; \
+done; echo "postgres container did not come up within 5 minutes" >&2; exit 1'
+
+ExecStart=__REPO_ROOT__/scripts/backup-postgres.sh

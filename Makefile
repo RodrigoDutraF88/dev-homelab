@@ -15,7 +15,7 @@ COMPOSE = docker compose --env-file .env -f compose/docker-compose.yml
 # see the header of compose/production.yml.
 PROD = $(COMPOSE) -f compose/production.yml
 
-.PHONY: up down restart logs ps config pull certs prod-config prod-up prod-down backup
+.PHONY: up down restart logs ps config pull certs prod-config prod-up prod-down backup backup-timer
 
 up:
 	$(COMPOSE) up -d
@@ -56,3 +56,8 @@ prod-down:
 # Restoring is deliberately not a make target — see scripts/restore-postgres.sh.
 backup:
 	./scripts/backup-postgres.sh
+
+# Install the systemd user timer that runs the above daily. Idempotent — re-run
+# it after editing anything in infrastructure/systemd/.
+backup-timer:
+	./scripts/install-backup-timer.sh

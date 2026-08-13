@@ -1,0 +1,26 @@
+# Daily trigger for dev-homelab-backup.service.
+#
+# Persistent=true is the whole reason this is a systemd timer rather than a cron
+# entry. cron only fires if the machine happens to be awake at the appointed
+# minute and silently does nothing otherwise, which on a laptop means the backup
+# quietly stops happening — exactly how this repo ended up with a three-day-old
+# backup and no indication anything was wrong. Persistent records the last run
+# and catches up at the next boot instead.
+#
+# Midday rather than the small hours, so the common case is a normal run on a
+# machine that is already on, and catch-up is the exception rather than the rule.
+# The randomized delay keeps it off a round number for no reason other than not
+# competing with everything else scheduled at 12:00 sharp.
+
+[Unit]
+Description=Daily dev-homelab Postgres backup
+Documentation=file://__REPO_ROOT__/scripts/backup-postgres.sh
+
+[Timer]
+OnCalendar=*-*-* 12:00:00
+Persistent=true
+RandomizedDelaySec=10m
+Unit=dev-homelab-backup.service
+
+[Install]
+WantedBy=timers.target
