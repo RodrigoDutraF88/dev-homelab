@@ -9,6 +9,7 @@ volumes:
   redis-data:
   uptime-kuma-data:
   prometheus-data:
+  alertmanager-data:
   grafana-data:
 
 services:
@@ -124,6 +125,9 @@ services:
       - "--web.console.templates=/usr/share/prometheus/consoles"
     volumes:
       - ../infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro,Z
+      # Mounted as a directory so a new rule file is picked up by a reload without
+      # touching the compose file. The glob in prometheus.yml does the rest.
+      - ../infrastructure/prometheus/rules:/etc/prometheus/rules:ro,Z
       - prometheus-data:/prometheus
     networks:
       - dev-homelab
@@ -132,6 +136,31 @@ services:
       - "traefik.http.routers.prometheus.rule=Host(`prometheus.${DOMAIN:-localhost}`)"
       - "traefik.http.routers.prometheus.entrypoints=websecure"
       - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+
+  # Receives firing alerts from Prometheus and handles grouping, deduplication
+  # and silencing. Delivery is not configured — every route ends at a `null`
+  # receiver, so alerts are visible here and in Grafana but nothing leaves the
+  # machine. Adding a channel is a change to alertmanager.yml alone.
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: alertmanager
+    restart: always
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      # Silences are created in the UI and stored here. Without a volume, every
+      # restart would un-silence everything that had been deliberately muted.
+      - "--web.external-url=https://alertmanager.${DOMAIN:-localhost}"
+    volumes:
+      - ../infrastructure/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro,Z
+      - alertmanager-data:/alertmanager
+    networks:
+      - dev-homelab
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.alertmanager.rule=Host(`alertmanager.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.alertmanager.entrypoints=websecure"
+      - "traefik.http.services.alertmanager.loadbalancer.server.port=9093"
 
   # Probes services from the outside rather than reading counters from the inside.
   # node-exporter and cAdvisor answer "how is this machine doing?"; this answers

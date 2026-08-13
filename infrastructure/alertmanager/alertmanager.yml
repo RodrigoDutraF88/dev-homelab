@@ -1,0 +1,53 @@
+# infrastructure/alertmanager/alertmanager.yml
+# Alertmanager receives firing alerts from Prometheus and decides what happens to
+# them: grouping, deduplication, silencing, and delivery.
+#
+# Delivery is deliberately not configured yet. Every route ends at the `null`
+# receiver, so alerts are visible in the Alertmanager UI (and in Grafana) but
+# nothing leaves the machine. Adding a channel later means adding a receiver here
+# and pointing the route at it — the rules in prometheus/rules/ do not change.
+#
+# Note for when that day comes: this file is a bind mount, so ${VAR} from .env
+# does NOT reach it — same constraint as prometheus.yml and traefik.prod.yml.
+# Alertmanager's own answer is the `_file` suffix (e.g. `webhook_url_file`),
+# which reads a secret from a path instead of inlining it.
+
+global:
+  # How long to wait for a resolved notification before assuming an alert that
+  # stopped arriving is over. Must be longer than Prometheus's evaluation
+  # interval by a comfortable margin.
+  resolve_timeout: 5m
+
+route:
+  receiver: "null"
+  # Group by alert name and job so that one cause producing many alerts arrives
+  # as a single notification rather than a burst — e.g. a network drop taking out
+  # every blackbox probe at once.
+  group_by: ["alertname", "job"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  routes:
+    # The Watchdog is always firing by design and would otherwise sit at the top
+    # of the UI permanently. Kept on its own route so it is easy to point
+    # somewhere else later — a dead man's switch is only useful if something
+    # external notices it stopping.
+    - matchers:
+        - alertname = "Watchdog"
+      receiver: "null"
+      group_wait: 0s
+      repeat_interval: 1h
+
+# A critical and a warning firing for the same thing are one problem. This mutes
+# the warning while the critical is active — e.g. the 21-day and 7-day
+# certificate alerts, which are both true once the 7-day one trips.
+inhibit_rules:
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "warning"
+    equal: ["alertname", "instance"]
+
+receivers:
+  - name: "null"

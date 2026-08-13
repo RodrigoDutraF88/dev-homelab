@@ -6,6 +6,20 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+# Where firing alerts are sent. Prometheus evaluates the rules; Alertmanager
+# decides what happens to the results.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+# Rule files are read at startup and on SIGHUP, same as this file. A rule file
+# that fails to parse is refused wholesale — Prometheus keeps the previous rules
+# and sets prometheus_config_last_reload_successful to 0, which is exactly what
+# the PrometheusConfigReloadFailed alert watches for.
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
 scrape_configs:
   # Prometheus scraping itself — the cheapest way to tell whether it is alive.
   - job_name: prometheus
@@ -82,3 +96,9 @@ scrape_configs:
         target_label: instance
       - target_label: __address__
         replacement: blackbox-exporter:9115
+
+  # Alertmanager scrapes like anything else, so TargetDown covers the alerting
+  # system itself — as far as it can, anyway. See the Watchdog rule.
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["alertmanager:9093"]

@@ -1,0 +1,128 @@
+# infrastructure/prometheus/rules/alerts.yml
+# Alert rules. Prometheus evaluates these every evaluation_interval (15s) and
+# hands anything firing to Alertmanager, which groups and deduplicates them.
+#
+# `for:` is the part that matters most here. It requires a condition to hold for
+# that long before the alert fires, which is what separates a real outage from a
+# single missed scrape during a laptop suspend. Nothing below fires instantly.
+#
+# Severity is a label, not a built-in: `critical` and `warning` mean whatever the
+# routing in alertmanager.yml says they mean. Right now that is "show in the UI"
+# for both, since no notification channel is configured yet.
+
+groups:
+  - name: availability
+    rules:
+      # Covers every scrape target: prometheus, traefik, node, cadvisor and the
+      # blackbox exporter itself. Note the blind spot — Prometheus cannot alert
+      # on its own death, because the thing that would notice is the thing that
+      # died. That is what the Watchdog rule at the bottom is for.
+      - alert: TargetDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Scrape target {{ $labels.job }} is down"
+          description: "{{ $labels.instance }} (job {{ $labels.job }}) has been unreachable for 5 minutes."
+
+      # The app-level check. Distinguishes "the service is broken" from "the path
+      # to it is broken" by which of the two probes fails — see the blackbox job
+      # in prometheus.yml.
+      - alert: ProbeFailed
+        expr: probe_success == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Probe failing for {{ $labels.instance }}"
+          description: "HTTP probe of {{ $labels.instance }} has failed for 5 minutes."
+
+      - alert: ProbeSlow
+        expr: probe_duration_seconds > 5
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} is responding slowly"
+          description: "Probe has taken over 5s for 15 minutes (currently {{ $value | humanizeDuration }})."
+
+  - name: certificates
+    rules:
+      # The wildcard renews itself ~30d before expiry. If these fire, that has
+      # stopped working — most likely DUCKDNS_TOKEN went stale.
+      - alert: CertificateExpiringSoon
+        expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 21
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "TLS certificate for {{ $labels.instance }} expires in under 21 days"
+          description: "{{ $value | printf \"%.1f\" }} days remaining. Renewal should have happened at 30 days."
+
+      - alert: CertificateExpiringCritical
+        expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 7
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "TLS certificate for {{ $labels.instance }} expires in under 7 days"
+          description: "{{ $value | printf \"%.1f\" }} days remaining. Automatic renewal has failed."
+
+  - name: host
+    rules:
+      # Only the root filesystem. / and /home are separate mountpoints on the same
+      # btrfs pool (nvme0n1p3), so alerting on both would report one problem twice.
+      - alert: HostDiskSpaceLow
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} * 100 < 15
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Less than 15% disk free on {{ $labels.instance }}"
+          description: "{{ $value | printf \"%.1f\" }}% free on /. Prometheus retention is 15d and backups land in $HOME."
+
+      - alert: HostDiskSpaceCritical
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} * 100 < 5
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Less than 5% disk free on {{ $labels.instance }}"
+          description: "{{ $value | printf \"%.1f\" }}% free on /."
+
+      - alert: HostMemoryLow
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100 < 10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Less than 10% memory available on {{ $labels.instance }}"
+          description: "{{ $value | printf \"%.1f\" }}% available. This is an 8GB laptop running the whole stack."
+
+  - name: meta
+    rules:
+      # A silently broken config reload leaves Prometheus running happily on the
+      # last good file, which is easy to miss after editing prometheus.yml.
+      - alert: PrometheusConfigReloadFailed
+        expr: prometheus_config_last_reload_successful == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus failed to reload its configuration"
+          description: "The running config is the last one that parsed. Check `docker logs prometheus`."
+
+      # Deliberately always firing. A rule that is always on is how you check the
+      # alerting pipeline itself is alive: if Watchdog ever stops appearing in
+      # Alertmanager, then Prometheus, the rules, or the link between them is
+      # broken — none of which any other alert here could tell you, because they
+      # all depend on the same machinery. Becomes genuinely useful the day a
+      # notification channel exists and its absence can be noticed remotely.
+      - alert: Watchdog
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: "Alerting pipeline is alive"
+          description: "This alert is always firing by design. Its absence is the signal."
