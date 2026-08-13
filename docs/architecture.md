@@ -62,6 +62,12 @@ Role: single-node Docker host.
   once publicly through Traefik — because "the app is down" and "the path to the
   app is down" are different outages. The public probe also reports TLS
   certificate expiry, which is how a failed wildcard renewal would surface.
+ **Scheduled work is a systemd timer, not cron**: the unit files live in
+  `infrastructure/systemd/` and are installed by a script, so the schedule is part
+  of the repository like everything else — a crontab entry would exist only on the
+  machine. `Persistent=true` also matters more than it sounds on a laptop: cron
+  fires only if the host happens to be awake at that minute and silently skips
+  otherwise, while systemd records the last run and catches up at the next boot.
  **Grafana is provisioned, never clicked**: the Prometheus datasource and every
   dashboard live in `infrastructure/grafana/provisioning/` and are marked
   non-editable, so the browser cannot become a second source of truth. Changing a
@@ -110,5 +116,6 @@ convenience, not the system of record.
    cAdvisor for per-container metrics
 7. Grafana (dashboards, fed by Prometheus, provisioned from files)
 8. TLS via Let's Encrypt, `compose/production.yml` activated
-9. Backup scripts for Postgres volumes
+9. Backup scripts for Postgres volumes, every database dumped on a daily systemd timer
+   (`infrastructure/systemd/`, installed with `make backup-timer`)
 10. Host provisioning script (`scripts/`) to rebuild the machine from scratch if needed
