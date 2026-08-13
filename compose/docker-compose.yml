@@ -124,6 +124,25 @@ services:
       - "traefik.http.routers.prometheus.entrypoints=websecure"
       - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
 
+  # Probes services from the outside rather than reading counters from the inside.
+  # node-exporter and cAdvisor answer "how is this machine doing?"; this answers
+  # "does this URL actually respond?" — which is the only question the Bookshelf
+  # app can be asked, since it ships no /metrics endpoint of its own.
+  #
+  # It holds no targets: Prometheus supplies the URL per scrape as a query
+  # parameter, so adding a service to probe is a change to prometheus.yml, not
+  # here. See the blackbox job there for the relabel dance that makes that work.
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.27.0
+    container_name: blackbox-exporter
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/blackbox/blackbox.yml"
+    volumes:
+      - ../infrastructure/blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro,Z
+    networks:
+      - dev-homelab
+
   node-exporter:
     image: prom/node-exporter:v1.9.1
     container_name: node-exporter

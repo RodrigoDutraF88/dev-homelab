@@ -42,3 +42,43 @@ scrape_configs:
       - source_labels: [__name__]
         regex: "container_fs_(io_current|io_time_seconds_total|io_time_weighted_seconds_total|sector_reads_total|sector_writes_total)"
         action: drop
+
+  # Blackbox probes. This job is shaped differently from the others: the target
+  # list is not what Prometheus connects to. It scrapes blackbox-exporter every
+  # time, passing the real URL along as ?target=, and the relabel_configs below
+  # are what perform that swap:
+  #   1. copy the target URL into the __param_target query parameter
+  #   2. keep that URL as the `instance` label, so graphs are labelled by service
+  #      rather than by the exporter that happened to probe them
+  #   3. overwrite the address actually dialled with the exporter itself
+  # Without step 3 Prometheus would try to scrape https://bookshelf...  directly
+  # and get HTML instead of metrics.
+  #
+  # Two targets on purpose. The internal one isolates the app: if it fails, the
+  # app is broken. The public one traverses DNS, Traefik and TLS, so if it fails
+  # while the internal one passes, the app is fine and the path to it is not.
+  # It also yields probe_ssl_earliest_cert_expiry, i.e. certificate expiry
+  # monitoring for free — the wildcard renews itself, and this is how I would
+  # find out if it ever stopped.
+  #
+  # The public hostname is written out in full because this file is a bind mount:
+  # Compose interpolates variables into the compose file, never into a file it
+  # mounts, so ${DOMAIN} would arrive here as four literal characters. Same
+  # reason the ACME email is hardcoded in traefik.prod.yml. The consequence is
+  # that this target only resolves when DOMAIN is the DuckDNS one; in dev
+  # (DOMAIN=localhost) it fails, and the internal probe is the meaningful one.
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://bookshelf:3000/login
+          - https://bookshelf.rodrigodutra-homelab.duckdns.org/login
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

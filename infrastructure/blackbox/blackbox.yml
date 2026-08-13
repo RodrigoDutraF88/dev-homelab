@@ -1,0 +1,25 @@
+# infrastructure/blackbox/blackbox.yml
+# Probe definitions for blackbox-exporter. Unlike node-exporter or cAdvisor, this
+# exporter has no metrics of its own to report: Prometheus passes it a target URL
+# and a module name, it performs the request, and returns the result of that one
+# probe as metrics. The modules below are the named recipes it can be asked for.
+
+modules:
+  # Plain "is it serving?" check. Used for both the internal container URL and
+  # the public one through Traefik.
+  http_2xx:
+    prober: http
+    timeout: 10s
+    http:
+      method: GET
+      valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+      # Only a 200 counts. The app answers 307 on `/`, redirecting to the login
+      # page, which is why the probe targets /login directly rather than the root
+      # and then relies on follow_redirects to paper over the difference.
+      valid_status_codes: [200]
+      follow_redirects: true
+      # The container has an IPv6 address on the bridge network but nothing
+      # upstream answers on it; without this the probe spends its whole timeout
+      # on AAAA before falling back.
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
