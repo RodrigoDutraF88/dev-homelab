@@ -104,7 +104,16 @@ services:
   prometheus:
     image: prom/prometheus:v3.13.2
     container_name: prometheus
-    restart: unless-stopped
+    # `always`, not the `unless-stopped` every other service uses. On 2026-08-13
+    # this container was stopped by hand, and when the Docker daemon restarted
+    # hours later every other service came back while this one stayed down —
+    # which is precisely what unless-stopped promises: an explicit stop is
+    # remembered across daemon restarts. That is the right default for a service
+    # you might deliberately take offline, and the wrong one for the thing that
+    # records whether everything else is alive. Losing ~11h of metrics is not
+    # noticed until you go looking for them. Stopping it on purpose now needs
+    # `docker stop prometheus` to be followed by nothing restarting the daemon.
+    restart: always
     # Overriding command drops the image defaults, so the console paths have to
     # be repeated alongside the flags we actually care about.
     command:
